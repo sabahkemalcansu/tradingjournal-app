@@ -1,103 +1,235 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useEffect, useState } from 'react';
+import { useTradeStore } from '@/store/trades';
+import { Trade } from '@/lib/types';
+import { TradeFormData } from '@/lib/validations';
+import { MonthTabs } from '@/components/month-tabs';
+import { TradeTable } from '@/components/trade-table';
+import { TradeStats } from '@/components/trade-stats';
+import { TradeFormDialog } from '@/components/trade-form-dialog';
+import { Button } from '@/components/ui/button';
+import { Plus, FileDown, FileUp, Database, Trash2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { seedDemoData } from '@/lib/seed-data';
+import { tradeRepo } from '@/lib/repo';
+
+export default function HomePage() {
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Trade | null>(null);
+  const [seedingData, setSeedingData] = useState(false);
+  const [clearingData, setClearingData] = useState(false);
+  
+  const { toast } = useToast();
+  
+  const {
+    trades,
+    loading,
+    activeMonthKey,
+    loadTradesByMonth,
+    addTrade,
+    updateTrade,
+    deleteTrade,
+    refreshMetadata,
+  } = useTradeStore();
+
+  // İlk yüklemede metadata ve trade'leri yükle
+  useEffect(() => {
+    refreshMetadata();
+    loadTradesByMonth(activeMonthKey);
+  }, []);
+
+  // Aktif ay değiştiğinde trade'leri yeniden yükle
+  useEffect(() => {
+    loadTradesByMonth(activeMonthKey);
+  }, [activeMonthKey]);
+
+  const handleAddTrade = async (data: TradeFormData) => {
+    const result = await addTrade(data);
+    if (result) {
+      setFormOpen(false);
+    }
+  };
+
+  const handleUpdateTrade = async (data: TradeFormData) => {
+    if (!editingTrade) return;
+    
+    const result = await updateTrade(editingTrade.id, data);
+    if (result) {
+      setEditingTrade(null);
+    }
+  };
+
+  const handleEdit = (trade: Trade) => {
+    setEditingTrade(trade);
+  };
+
+  const handleDelete = async (trade: Trade) => {
+    const confirmed = window.confirm(
+      `${trade.symbol} işlemini silmek istediğinizden emin misiniz?`
+    );
+    
+    if (confirmed) {
+      const success = await deleteTrade(trade.id);
+      if (success) {
+        toast({
+          title: 'Başarılı',
+          description: 'İşlem silindi',
+        });
+      } else {
+        toast({
+          title: 'Hata',
+          description: 'İşlem silinemedi',
+          variant: 'destructive',
+        });
+      }
+    }
+  };
+
+  const handleSeedData = async () => {
+    setSeedingData(true);
+    try {
+      const count = await seedDemoData();
+      await refreshMetadata();
+      await loadTradesByMonth(activeMonthKey);
+      toast({
+        title: 'Başarılı',
+        description: `${count} demo işlem eklendi`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Demo veriler eklenemedi',
+        variant: 'destructive',
+      });
+    } finally {
+      setSeedingData(false);
+    }
+  };
+
+  const handleClearData = async () => {
+    const confirmed = window.confirm(
+      'Tüm verileri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz!'
+    );
+    
+    if (confirmed) {
+      setClearingData(true);
+      try {
+        await tradeRepo.clear();
+        await refreshMetadata();
+        await loadTradesByMonth(activeMonthKey);
+        toast({
+          title: 'Başarılı',
+          description: 'Tüm veriler silindi',
+        });
+      } catch (error) {
+        toast({
+          title: 'Hata',
+          description: 'Veriler silinemedi',
+          variant: 'destructive',
+        });
+      } finally {
+        setClearingData(false);
+      }
+    }
+  };
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="container py-6 space-y-6">
+      {/* Başlık ve aksiyonlar */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">İşlemler</h1>
+          <p className="text-muted-foreground">
+            Forex işlemlerinizi takip edin ve analiz edin
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        <div className="flex items-center gap-2">
+          {trades.length === 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSeedData}
+              disabled={seedingData}
+            >
+              <Database className="mr-2 h-4 w-4" />
+              {seedingData ? 'Ekleniyor...' : 'Demo Veri Ekle'}
+            </Button>
+          )}
+          {trades.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearData}
+              disabled={clearingData}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {clearingData ? 'Siliniyor...' : 'Tüm Verileri Sil'}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              // TODO: Import functionality
+              toast({
+                title: 'Yakında',
+                description: 'İçe aktarma özelliği yakında eklenecek',
+              });
+            }}
+          >
+            <FileUp className="mr-2 h-4 w-4" />
+            İçe Aktar
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              // TODO: Export functionality
+              toast({
+                title: 'Yakında',
+                description: 'Dışa aktarma özelliği yakında eklenecek',
+              });
+            }}
+          >
+            <FileDown className="mr-2 h-4 w-4" />
+            Dışa Aktar
+          </Button>
+          <Button onClick={() => setFormOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Yeni İşlem
+          </Button>
+        </div>
+      </div>
+
+      {/* Aylık sekmeler */}
+      <MonthTabs />
+
+      {/* İstatistik kartları */}
+      <TradeStats trades={trades} />
+
+      {/* İşlem tablosu */}
+      <TradeTable 
+        trades={trades} 
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+      />
+
+      {/* Yeni işlem dialog */}
+      <TradeFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        onSubmit={handleAddTrade}
+      />
+
+      {/* Düzenleme dialog */}
+      <TradeFormDialog
+        open={!!editingTrade}
+        onOpenChange={(open) => !open && setEditingTrade(null)}
+        trade={editingTrade}
+        onSubmit={handleUpdateTrade}
+      />
     </div>
   );
 }

@@ -1,36 +1,159 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Trading Journal - Forex İşlem Takip Uygulaması
 
-## Getting Started
+Modern, offline-first forex trading journal uygulaması. Tüm verileriniz tarayıcınızda güvenle saklanır.
 
-First, run the development server:
+## 🚀 Özellikler
+
+- ✅ **Manuel İşlem Girişi**: Forex işlemlerinizi detaylı olarak kaydedin
+- ✅ **Aylık Takip**: Excel benzeri ay sekmeleri ile organize takip
+- ✅ **P&L Hesaplamaları**: BUY/SELL yön duyarlı otomatik kar/zarar hesaplaması
+- ✅ **İstatistikler**: Detaylı performans analizleri ve grafikler
+- ✅ **Offline-First**: Tüm veriler IndexedDB'de lokal olarak saklanır
+- ✅ **Dark/Light Tema**: Göz yormayan tema desteği
+- ✅ **Responsive Tasarım**: Mobil uyumlu arayüz
+
+## 🛠️ Teknoloji Stack
+
+- **Framework**: Next.js 15 (App Router)
+- **Dil**: TypeScript
+- **Stil**: Tailwind CSS + shadcn/ui
+- **State Management**: Zustand
+- **Veritabanı**: Dexie (IndexedDB wrapper)
+- **Validasyon**: Zod
+- **Grafikler**: Recharts
+- **Form**: React Hook Form
+- **Tarih**: date-fns
+- **Sayı Formatlama**: numeral
+
+## 📦 Kurulum
 
 ```bash
+# Bağımlılıkları yükle
+npm install
+
+# Geliştirme sunucusunu başlat
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Production build
+npm run build
+
+# Production sunucusu
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🏗️ Proje Yapısı
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+tradingjournal-app/
+├── app/
+│   ├── layout.tsx          # Ana layout
+│   ├── page.tsx            # Ana sayfa (İşlemler)
+│   └── stats/
+│       └── page.tsx        # İstatistikler sayfası
+├── components/
+│   ├── month-tabs.tsx      # Aylık sekmeler
+│   ├── trade-table.tsx     # İşlem tablosu
+│   ├── trade-form-dialog.tsx # İşlem form dialog
+│   ├── trade-stats.tsx     # Özet istatistikler
+│   ├── kpi-cards.tsx       # KPI kartları
+│   ├── charts/
+│   │   ├── symbol-bar.tsx  # Sembol bar chart
+│   │   ├── monthly-pl-line.tsx # P&L trend chart
+│   │   └── buy-sell-pie.tsx    # İşlem tipi dağılımı
+│   └── ui/                 # shadcn/ui komponentleri
+├── lib/
+│   ├── db.ts               # Dexie veritabanı kurulumu
+│   ├── repo.ts             # Repository katmanı
+│   ├── calc.ts             # Hesaplama fonksiyonları
+│   ├── format.ts           # Formatlama yardımcıları
+│   ├── types.ts            # TypeScript tipleri
+│   └── validations.ts      # Zod şemaları
+└── store/
+    ├── trades.ts           # İşlem state yönetimi
+    └── theme.ts            # Tema state yönetimi
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📊 Veri Modeli
 
-## Learn More
+```typescript
+interface Trade {
+  id: string;                // UUID
+  symbol: string;            // Sembol (XAUUSD, EURUSD vb.)
+  datetime: string;          // İşlem tarihi ve saati (ISO)
+  type: 'BUY' | 'SELL';      // İşlem tipi
+  volume: number;            // Lot miktarı
+  entry: number;             // Giriş fiyatı
+  exit?: number | null;      // Çıkış fiyatı (opsiyonel)
+  sl?: number | null;        // Stop Loss
+  tp?: number | null;        // Take Profit
+  swap?: number | null;      // Swap ücreti
+  notes?: string | null;     // Notlar
+  
+  // Hesaplanan alanlar
+  monthKey: string;          // YYYY-MM formatında ay
+  changePct: number;         // Değişim yüzdesi
+  plPct: number;             // P&L yüzdesi
+  plSign: '+' | '-';         // Kar/Zarar işareti
+}
+```
 
-To learn more about Next.js, take a look at the following resources:
+## 📈 P&L Hesaplama Mantığı
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **BUY İşlemleri**: `((exit - entry) / entry) * 100`
+- **SELL İşlemleri**: `((entry - exit) / entry) * 100`
+- **Aylık P&L**: Hacim ağırlıklı ortalama
+- **Win Rate**: Sadece kapalı pozisyonlar üzerinden hesaplanır
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🎯 Kullanım
 
-## Deploy on Vercel
+### İşlem Ekleme
+1. "Yeni İşlem" butonuna tıklayın
+2. Sembol, tarih, tip ve fiyat bilgilerini girin
+3. Opsiyonel olarak SL/TP ve notlar ekleyin
+4. Kaydet'e tıklayın
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Aylık Takip
+- Üst sekmelerde aylar arasında geçiş yapın
+- "Bu Ay" sekmesi her zaman güncel ayı gösterir
+- Her ay için ayrı istatistikler görüntülenir
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### İstatistikler
+- En çok işlem yapılan sembol
+- Toplam işlem sayısı
+- Aylık P&L yüzdesi
+- Win rate (kazanç oranı)
+- Sembol bazında detaylı performans
+
+## 🔄 Import/Export
+
+CSV ve JSON formatında veri import/export özelliği yakında eklenecek.
+
+## 🌙 Tema Değiştirme
+
+Sağ üstteki ay/güneş ikonuna tıklayarak dark/light tema arasında geçiş yapabilirsiniz.
+
+## ⌨️ Klavye Kısayolları
+
+- `N`: Yeni işlem dialog'unu aç
+- `F`: Filtre panelini aç/kapat (yakında)
+
+## 🔒 Veri Güvenliği
+
+Tüm verileriniz yerel tarayıcınızda IndexedDB'de saklanır. Veriler hiçbir sunucuya gönderilmez.
+
+## 📝 Lisans
+
+MIT
+
+## 🤝 Katkıda Bulunma
+
+Pull request'ler kabul edilir. Büyük değişiklikler için önce bir issue açınız.
+
+## 🐛 Bilinen Sorunlar
+
+- Import/Export özellikleri henüz tamamlanmadı
+- Filtreler henüz tam işlevsel değil
+
+## 📧 İletişim
+
+Sorularınız için issue açabilirsiniz.
