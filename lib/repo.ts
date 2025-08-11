@@ -1,155 +1,125 @@
 import { v4 as uuidv4 } from 'uuid';
-import { db } from './db';
 import { Trade, TradeFilters } from './types';
 import { createTradeWithCalculations, getDateKey } from './calc';
+import { getSupabaseBrowserClient } from './supabase';
 
+// Geçici: Dexie yerine Supabase'e geçiş için temel şablon
 export const tradeRepo = {
-  /**
-   * Yeni trade ekle
-   */
   async add(tradeData: Omit<Trade, 'id' | 'monthKey' | 'changePct' | 'plPct' | 'plSign' | 'plAmount'>): Promise<Trade> {
+    const supabase = getSupabaseBrowserClient();
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) throw new Error('Önce giriş yapmalısınız');
+
     const trade = createTradeWithCalculations({
       ...tradeData,
       id: uuidv4()
     });
-    
-    await db.trades.add(trade);
+
+    const { error } = await supabase.from('trades').insert({ ...trade, user_id: sessionData.session.user.id });
+    if (error) throw error;
     return trade;
   },
 
-  /**
-   * Trade güncelle
-   */
   async update(id: string, tradeData: Partial<Omit<Trade, 'id' | 'monthKey' | 'changePct' | 'plPct' | 'plSign' | 'plAmount'>>): Promise<Trade | null> {
-    const existingTrade = await db.trades.get(id);
-    if (!existingTrade) return null;
-    
-    const updatedData = {
-      ...existingTrade,
-      ...tradeData
-    };
-    
-    const updatedTrade = createTradeWithCalculations(updatedData);
-    await db.trades.update(id, updatedTrade);
-    
-    return updatedTrade;
+    const supabase = getSupabaseBrowserClient();
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) throw new Error('Önce giriş yapmalısınız');
+
+    // Supabase tarafında upsert
+    const merged = { id, ...(tradeData as any) } as any;
+    const updated = createTradeWithCalculations(merged as any);
+    const { error } = await supabase.from('trades').update(updated).eq('id', id);
+    if (error) throw error;
+    return updated;
   },
 
-  /**
-   * Trade sil
-   */
   async delete(id: string): Promise<boolean> {
-    const count = await db.trades.where('id').equals(id).delete();
-    return count > 0;
+    const supabase = getSupabaseBrowserClient();
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) throw new Error('Önce giriş yapmalısınız');
+
+    const { error } = await supabase.from('trades').delete().eq('id', id);
+    if (error) throw error;
+    return true;
   },
 
-  /**
-   * ID ile trade getir
-   */
-  async getById(id: string): Promise<Trade | null> {
-    const trade = await db.trades.get(id);
-    return trade || null;
+  async getById(id: string) {
+    const supabase = getSupabaseBrowserClient();
+    const { data, error } = await supabase.from('trades').select('*').eq('id', id).single();
+    if (error) return null;
+    return data as Trade;
   },
 
-  /**
-   * Aya göre trade'leri listele
-   */
   async listByMonth(monthKey: string): Promise<Trade[]> {
-    const trades = await db.trades
-      .where('monthKey')
-      .equals(monthKey)
-      .toArray();
-    
-    return trades.sort((a, b) => 
-      new Date(b.datetime).getTime() - new Date(a.datetime).getTime()
-    );
+    const supabase = getSupabaseBrowserClient();
+    const { data, error } = await supabase
+      .from('trades')
+      .select('*')
+      .eq('monthKey', monthKey)
+      .order('datetime', { ascending: false });
+    if (error) throw error;
+    return (data as Trade[]) || [];
   },
 
-  /**
-   * Tüm trade'leri listele
-   */
   async listAll(): Promise<Trade[]> {
-    const trades = await db.trades.toArray();
-    return trades.sort((a, b) => 
-      new Date(b.datetime).getTime() - new Date(a.datetime).getTime()
-    );
+    const supabase = getSupabaseBrowserClient();
+    const { data, error } = await supabase
+      .from('trades')
+      .select('*')
+      .order('datetime', { ascending: false });
+    if (error) throw error;
+    return (data as Trade[]) || [];
   },
 
-  /**
-   * Filtrelere göre trade'leri listele
-   */
   async listByFilters(filters: TradeFilters): Promise<Trade[]> {
-    let collection = db.trades.toCollection();
-    
-    // Ay filtresi
-    if (filters.monthKey) {
-      collection = db.trades.where('monthKey').equals(filters.monthKey);
-    }
-    
-    let trades = await collection.toArray();
-    
-    // Sembol filtresi
+    const supabase = getSupabaseBrowserClient();
+    let query = supabase.from('trades').select('*');
+
+    if (filters.monthKey) query = query.eq('monthKey', filters.monthKey);
+    const { data, error } = await query;
+    if (error) throw error;
+    let trades = (data as Trade[]) || [];
+
     if (filters.symbols && filters.symbols.length > 0) {
       trades = trades.filter(t => filters.symbols!.includes(t.symbol));
     }
-    
-    // Tip filtresi
-    if (filters.type) {
-      trades = trades.filter(t => t.type === filters.type);
-    }
-    
-    // Sadece açık pozisyonlar
-    if (filters.onlyOpen) {
-      trades = trades.filter(t => !t.exit || t.exit === null);
-    }
-    
-    // Günlük filtre
-    if (filters.date) {
-      trades = trades.filter(t => getDateKey(t.datetime) === filters.date);
-    }
-    
-    return trades.sort((a, b) => 
-      new Date(b.datetime).getTime() - new Date(a.datetime).getTime()
-    );
+    if (filters.type) trades = trades.filter(t => t.type === filters.type);
+    if (filters.onlyOpen) trades = trades.filter(t => !t.exit);
+    if (filters.date) trades = trades.filter(t => getDateKey(t.datetime) === filters.date);
+
+    return trades.sort((a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime());
   },
 
-  /**
-   * Benzersiz sembol listesi
-   */
   async getUniqueSymbols(): Promise<string[]> {
-    const trades = await db.trades.toArray();
-    const symbols = new Set(trades.map(t => t.symbol));
+    const supabase = getSupabaseBrowserClient();
+    const { data, error } = await supabase.from('trades').select('symbol');
+    if (error) throw error;
+    const symbols = new Set((data as any[]).map(r => r.symbol));
     return Array.from(symbols).sort();
   },
 
-  /**
-   * Mevcut ay anahtarları
-   */
   async getMonthKeys(): Promise<string[]> {
-    const trades = await db.trades.toArray();
-    const monthKeys = new Set(trades.map(t => t.monthKey));
-    return Array.from(monthKeys).sort((a, b) => b.localeCompare(a));
+    const supabase = getSupabaseBrowserClient();
+    const { data, error } = await supabase.from('trades').select('monthKey');
+    if (error) throw error;
+    const keys = new Set((data as any[]).map(r => r.monthKey));
+    return Array.from(keys).sort((a, b) => b.localeCompare(a));
   },
 
-  /**
-   * Toplu trade ekleme (import için)
-   */
-  async bulkAdd(trades: Omit<Trade, 'id' | 'monthKey' | 'changePct' | 'plPct' | 'plSign' | 'plAmount'>[]): Promise<Trade[]> {
-    const processedTrades = trades.map(tradeData => 
-      createTradeWithCalculations({
-        ...tradeData,
-        id: uuidv4()
-      })
-    );
-    
-    await db.trades.bulkAdd(processedTrades);
-    return processedTrades;
+  async bulkAdd(list: Omit<Trade, 'id' | 'monthKey' | 'changePct' | 'plPct' | 'plSign' | 'plAmount'>[]): Promise<Trade[]> {
+    const supabase = getSupabaseBrowserClient();
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) throw new Error('Önce giriş yapmalısınız');
+
+    const processed = list.map(tradeData => createTradeWithCalculations({ ...tradeData, id: uuidv4() }));
+    const payload = processed.map(t => ({ ...t, user_id: sessionData.session!.user.id }));
+    const { error } = await supabase.from('trades').insert(payload);
+    if (error) throw error;
+    return processed;
   },
 
-  /**
-   * Veritabanını temizle
-   */
   async clear(): Promise<void> {
-    await db.trades.clear();
+    const supabase = getSupabaseBrowserClient();
+    await supabase.from('trades').delete().neq('id', '');
   }
 }; 
